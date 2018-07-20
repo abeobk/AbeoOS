@@ -9,9 +9,10 @@
 #ifndef MUTEX_H_
 #define MUTEX_H_
 
-#include "os.h"
+#include "core.h"
 
 typedef struct mutex mutex_t;
+
 struct mutex{
     unsigned locked:1;
     task_queue_t waiting_queue;
@@ -27,17 +28,17 @@ struct mutex{
 
 //lock mutex
 void mutex_lock(mutex_t* m){
-    _SAVE_SREG;
+    OS_ENTER_CRITICAL();
 
     if(m->locked){
-        __os_suspend_current_task(&m->waiting_queue);
+        __os_suspend_crr_task(&m->waiting_queue);
     } else m->locked = TRUE;
 
-    _RESTORE_SREG;
+    OS_EXIT_CRITICAL();
 }
 
 void mutex_unlock(mutex_t* m){
-    _SAVE_SREG;
+    OS_ENTER_CRITICAL();
 
     task_t* task = m->waiting_queue.head;
     if(task){
@@ -47,7 +48,7 @@ void mutex_unlock(mutex_t* m){
         m->locked = FALSE;
     }
 
-    _RESTORE_SREG;
+    OS_EXIT_CRITICAL();
 }
 
 #endif /* MUTEX_H_ */

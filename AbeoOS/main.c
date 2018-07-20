@@ -5,83 +5,78 @@
 * Author : Do Van Phu
 */
 
+#include <avr/io.h>
+#include "abeoos/os.h"
 
-#include "os.h"
-#include "mutex.h"
-#include "uart.h"
+uint32_t ms=100;
+uint8_t bit=0;
+//volatile uint8_t task_stack[25][128];
 
-#include <avr/delay.h>
-
-uint32_t ms=1;
-
-
-
-void task1(void* data){
-    //init
-    while(1){
-        PORTB ^= _BV(PORTB5);
-        os_task_sleep(ms);
-    }
-}
-
-void task11(void* data){
-    //init
-    while(1){
-        PORTB ^= _BV(PORTB4);
-        os_task_sleep(3);
-    }
-}
-
-void task2(void* data){
-    while(1){
-    }
-}
 DEFINE_MUTEX(m1);
 
-void task6(void* data){
+
+//Setup SysTick ISR
+//OS_SETUP_SYSTICK_ISR();
+
+__OS_TASK__
+void task0(void* data){
     while(1){
-        ms = uart0_get_int();
-        if(ms>2000000)ms=2000000;
-        mutex_lock(&m1);
-        uart0_puts("ms=");
-        uart0_put_int(ms);
-        uart0_putc('\n');
-        mutex_unlock(&m1);
-        os_task_sleep(1000);
+        PORTA ^= _BV(0);
+        os_task_sleep_ms(1);
     }
 }
 
+__OS_TASK__
+void task1(void* data){
+    while(1){
+        PORTA ^= _BV(bit);
+        os_task_sleep_ms(ms);
+    }
+}
+
+__OS_TASK__
+void task2(void* data){
+    while(1){
+        bit++;
+        bit&=7;
+        ms=(bit+1)*50;
+        os_task_sleep_ms(1000*(bit+1));
+    }
+}    
+
+__OS_TASK__
 void task7(void* data){
     while(1){
         mutex_lock(&m1);
-        //print os tick
-        uart0_puts("os time: ");
-        uart0_put_float(__os_tick_count/1000.0f);
-        uart0_puts("ms\n");
+        printf("Hello from task 7:\n");
         mutex_unlock(&m1);
-        os_task_sleep(1000);
+        os_task_sleep_ms(500);
+    }
+}
+
+__OS_TASK__
+void task8(void* data){
+    while(1){
+        mutex_lock(&m1);
+        printf("os time: %u\n",__os_tick_count);
+        mutex_unlock(&m1);
+        os_task_sleep_ms(1000);
     }
 }
 
 int main(void)
 {
-    DDRB=0xFF;//all B's are output
+    DDRA=0xFF;//all B's are output
 
     //setup uart
-    uart0_init(115200);
+    sysuart_init();
 
-    os_create_task(task2,128,TASK_PRIORITY_NORMAL,NULL);
-    os_create_task(task2,128,TASK_PRIORITY_LOW,NULL);
-    os_create_task(task2,128,TASK_PRIORITY_HIGH,NULL);
-    os_create_task(task1,128,TASK_PRIORITY_REAL_TIME,NULL);
-    os_create_task(task11,128,TASK_PRIORITY_REAL_TIME,NULL);
-    //os_create_task(task2,128,TASK_PRIORITY_NORMAL,NULL);
-    //os_create_task(task2,128,TASK_PRIORITY_NORMAL,NULL);
-    //os_create_task(task2,128,TASK_PRIORITY_NORMAL,NULL);
-    //os_create_task(task2,128,TASK_PRIORITY_NORMAL,NULL);
-    //os_create_task(task2,128,TASK_PRIORITY_NORMAL,NULL);
-    os_create_task(task6,128,TASK_PRIORITY_NORMAL,NULL);
-    os_create_task(task7,128,TASK_PRIORITY_LOW,NULL);
+    os_create_task(task0,71,TASK_PRI_REALTIME,NULL);
+    os_create_task(task1,71,TASK_PRI_HIGH,0);
+    os_create_task(task2,71,TASK_PRI_NORMAL,0);
+
+    os_create_task(task7,128,TASK_PRI_LOW,NULL);
+    os_create_task(task8,128,TASK_PRI_NORMAL,NULL);
 
     os_start();
 }
