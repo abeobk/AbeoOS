@@ -77,13 +77,12 @@ void __os_task_scheduler(){
     //mess up with the task stacks
     OS_RESTORE_STACK_PTR(OS_STACK_START);
 
-    //Scheduling
     while(TRUE){
+        //Scheduling
         while(TRUE){
             //current task = first task in queue
             __os_crr_task = __os_taskqueue_running.head;
 
-            //no task to run
             if(__os_crr_task==NULL)break;
 
             //rotate head to tail allowing next task to be run
@@ -95,38 +94,37 @@ void __os_task_scheduler(){
             //next time the os's timer ticks anyway
 
             //Resume task
-            TASK_RESTORE_STACK_PTR(__os_crr_task);
-            RESTORE_CONTEXT();
+            RESTORE_CONTEXT(__os_crr_task);
             reti();
         }
 
-        //enable interrupt
+        #ifdef USE_IDLE_TASK_HOOK_FN
+        os_idle_task_hook_fn();
+        #endif;
         sei();
-        //put the CPU to sleep
         asm volatile("sleep");
-        //- if woken up by the scheduling timer
-        //  this function will start from the beginning
-        //- if woken up by other interrupt sources,
-        //  this function will continue from here
         cli();
     }
 }
 
 //Start os
 void os_start(){
+
     //setup timer
     __os_systick_init();
 
+    ENABLE_SLEEP_MODE();
+
     //Run scheduler
-    __os_task_scheduler();
+    OS_INDIRECT_JUMP(__os_task_scheduler);
 }
 
 __NAKED__
-void __os_schedule_after_suspending_crr_task(){
+void __os_yield(){
     //Perform context switching
-    SAVE_CONTEXT();
-    TASK_SAVE_STACK_PTR(__os_crr_task);
-    __os_task_scheduler();
+    SAVE_CONTEXT(__os_crr_task);
+    //__os_task_scheduler();
+    OS_INDIRECT_JUMP(__os_task_scheduler);
 }
 
 //Put current task to suspended queue
@@ -145,7 +143,7 @@ void __os_suspend_crr_task(task_queue_t* queue){
     //then call scheduler
     //calling this function effectively push the next
     //line to crr task stack for later resume
-    __os_schedule_after_suspending_crr_task();
+    __os_yield();
 
     OS_EXIT_CRITICAL();
 }
@@ -178,7 +176,7 @@ void os_task_sleep_us(uint32_t us){
 //wake up a suspended task
 //
 void __os_wakeup_task(task_queue_t* queue, task_t* task){
-    //OS_ENTER_CRITICAL();
+    OS_ENTER_CRITICAL();
 
     __taskqueue_remove(queue,task);
 
@@ -189,7 +187,7 @@ void __os_wakeup_task(task_queue_t* queue, task_t* task){
     __taskqueue_insert_priority(&__os_taskqueue_running,task);
     #endif
 
-    //OS_EXIT_CRITICAL();
+    OS_EXIT_CRITICAL();
 }
 
 
@@ -204,51 +202,28 @@ void __os_tick(){
     while(task){
         next_task=task->next;
         //reduce delay of task
-        if(task->delay)task->delay--;
-        //wake up task if it is ready to run
-        if(task->delay==0)__os_wakeup_task(&__os_taskqueue_sleeping,task);
+        if(task->delay){
+            task->delay--;
+            //wake up task if it is ready to run
+            if(task->delay==0)__os_wakeup_task(&__os_taskqueue_sleeping,task);
+        }
         //next
         task = next_task;
     }
 }
 
-
-//
-//OS_TICK: This is the body of the SYSTICK_ISR
-//
-/*
-#define OS_TICK()                                \
-OS_SAVE_STACK_PTR(__os_crr_task->sp);            \
-SAVE_CONTEXT();                                  \
-__os_tick();                                     \
-OS_INDIRECT_JUMP(__os_task_scheduler);
-*/
-
-//__NAKED__
-//__os_systick_handler(){
-//if(__os_crr_task){
-//SAVE_CONTEXT();
-//TASK_SAVE_STACK_PTR(__os_crr_task->sp);
-//}
-//
-//__os_tick();
-//
-//OS_INDIRECT_JUMP(__os_task_scheduler);
-//}
-
 //SysTick ISR
 ISR_SYSTICK(){
-    //__os_systick_handler();
-    //reti();
-    if(__os_crr_task){
-        SAVE_CONTEXT();
-        TASK_SAVE_STACK_PTR(__os_crr_task);
-    }
+    //save context
+    SAVE_CONTEXT(__os_crr_task);
 
     __os_tick();
 
     OS_INDIRECT_JUMP(__os_task_scheduler);
 }
+
+
+
 
 
 #endif /* OS_H_ */

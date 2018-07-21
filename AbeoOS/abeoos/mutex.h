@@ -14,8 +14,8 @@
 typedef struct mutex mutex_t;
 
 struct mutex{
-    unsigned locked:1;
-    task_queue_t waiting_queue;
+    unsigned     locked:1;      /*Locking state                 */
+    task_queue_t waiting_queue; /*Sleeping task in this mutex   */
 };
 
 #define DEFINE_MUTEX(m) volatile mutex_t m = {  \

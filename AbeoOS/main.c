@@ -8,9 +8,8 @@
 #include <avr/io.h>
 #include "abeoos/os.h"
 
-uint32_t ms=100;
-uint8_t bit=0;
-//volatile uint8_t task_stack[25][128];
+uint32_t ms=10;
+uint8_t bit=1;
 
 DEFINE_MUTEX(m1);
 
@@ -18,7 +17,7 @@ DEFINE_MUTEX(m1);
 //Setup SysTick ISR
 //OS_SETUP_SYSTICK_ISR();
 
-__OS_TASK__
+//__OS_TASK__
 void task0(void* data){
     while(1){
         PORTA ^= _BV(0);
@@ -26,7 +25,7 @@ void task0(void* data){
     }
 }
 
-__OS_TASK__
+//__OS_TASK__
 void task1(void* data){
     while(1){
         PORTA ^= _BV(bit);
@@ -34,23 +33,30 @@ void task1(void* data){
     }
 }
 
-__OS_TASK__
+//__OS_TASK__
 void task2(void* data){
     while(1){
         bit++;
-        bit&=7;
+        if(bit==8)bit=1;
         ms=(bit+1)*50;
         os_task_sleep_ms(1000*(bit+1));
     }
 }    
 
+uint32_t idle_cnt=0;
+
+void os_idle_task_hook_fn(){
+    idle_cnt++;
+}
+
+
 __OS_TASK__
 void task7(void* data){
     while(1){
         mutex_lock(&m1);
-        printf("Hello from task 7:\n");
+        printf("idle_count: %lu\n",idle_cnt);
         mutex_unlock(&m1);
-        os_task_sleep_ms(500);
+        os_task_sleep_ms(1000);
     }
 }
 
@@ -58,11 +64,12 @@ __OS_TASK__
 void task8(void* data){
     while(1){
         mutex_lock(&m1);
-        printf("os time: %u\n",__os_tick_count);
+        printf("os time: %lu\n",__os_tick_count);
         mutex_unlock(&m1);
-        os_task_sleep_ms(1000);
+        os_task_sleep_ms(5000);
     }
 }
+
 
 int main(void)
 {
@@ -79,5 +86,11 @@ int main(void)
     os_create_task(task8,128,TASK_PRI_NORMAL,NULL);
 
     os_start();
+    
+    //Should never reach here
+    while(TRUE){
+        PORTA=0xFF;
+        PORTA=0x00;
+    }
 }
 

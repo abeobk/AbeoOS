@@ -54,4 +54,13 @@ void __task_init(task_t* task, uint8_t priority){
     task->next=NULL;
 }
 
+
+task_t * __os_task_idle_handler=NULL;
+
+
+
+#ifdef USE_IDLE_TASK_HOOK_FN
+void os_idle_task_hook_fn();
+#endif
+
 #endif /* TASK_H_ */

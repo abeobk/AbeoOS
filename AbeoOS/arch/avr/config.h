@@ -68,8 +68,15 @@ typedef unsigned char bool_t;
 //Micro second per OS tick
 //This value should be larger than 100
 #ifndef OS_MS_PER_TICK
-#define OS_US_PER_TICK   200
+#define OS_US_PER_TICK   500
 #endif
+
+
+
+// void os_idle_hook_fn()
+#define USE_IDLE_TASK_HOOK_FN
+
+
 
 //The os stack size
 #define OS_STACK_START RAMEND
@@ -91,6 +98,10 @@ typedef unsigned char bool_t;
 //----------------------------------
 // PORTING CONFIGURATION for AVR
 //----------------------------------
+
+
+#define ENABLE_SLEEP_MODE()    MCUCR = _BV(SE)
+
 
 //RX buffer size
 //This value must be power of 2
@@ -162,25 +173,48 @@ typedef unsigned char bool_t;
 PUSH_PTR(sp,func);                                                  \
 *sp--=0;                                                            \
 *sp--=0;                                                            \
+*sp--=30;                                                           \
+*sp--=31;                                                           \
 PUSH_RAMPZ(sp);                                                     \
 PUSH_EIND(sp);                                                      \
 uint8_t ii_;                                                        \
-for(ii_=0;ii_<AVR_ARG_REG_NUM-1;ii_++){*sp--=ii_;}                  \
+for(ii_=1;ii_<AVR_ARG_REG_NUM ;ii_++){*sp--=0;}                     \
 PUSH_PTR(sp,data);                                                  \
-for(ii_=0;ii_<AVR_REG_CNT-AVR_ARG_REG_NUM-2;ii_++){*sp--=ii_+AVR_ARG_REG_NUM+2;}
+for(ii_=AVR_ARG_REG_NUM+2;ii_<AVR_REG_CNT-2;ii_++){*sp--=0;}
+
+
+//Restore OS stack pointer
+#define OS_RESTORE_STACK_PTR(sp)    \
+asm volatile(                       \
+"out __SP_L__, %A0      \n"         \
+"out __SP_H__, %B0      \n"         \
+::"z" (sp))
 
 
 //Save task context
-#define SAVE_CONTEXT()       \
+#define SAVE_CONTEXT(task)   \
 asm volatile(                \
 "cli                     \n" \
 "push   r0               \n" \
 "in     r0, __SREG__     \n" \
 "push   r0               \n" \
+"push   r30              \n" \
+"push   r31              \n" \
+"lds    r30,%[tsp]       \n" \
+"lds    r31,%[tsp]+1     \n" \
+"mov    r0,r30           \n" \
+"or     r0,r31           \n" \
+"brne   1f               \n" \
+"pop    r31              \n" \
+"pop    r30              \n" \
+"pop    r0               \n" \
+"out    __SREG__, r0     \n" \
+"pop    r0               \n" \
+"rjmp   2f               \n" \
+"1:                      \n" \
 SAVE_RAMPZ                   \
 SAVE_EIND                    \
 "push   r1               \n" \
-"clr    __zero_reg__     \n" \
 "push   r2               \n" \
 "push   r3               \n" \
 "push   r4               \n" \
@@ -209,16 +243,25 @@ SAVE_EIND                    \
 "push   r27              \n" \
 "push   r28              \n" \
 "push   r29              \n" \
-"push   r30              \n" \
-"push   r31              \n" \
-::)
+"clr    __zero_reg__     \n" \
+"in     r0, __SP_L__     \n" \
+"st     Z+, r0           \n" \
+"in     r0, __SP_H__     \n" \
+"st     Z+, r0           \n" \
+"2:                      \n" \
+::[tsp] "m" (task)           \
+:"r0", "r30", "r31")
 
 
 //Restore task context
-#define RESTORE_CONTEXT()    \
+#define RESTORE_CONTEXT(task)\
 asm volatile(                \
-"pop    r31               \n"\
-"pop    r30               \n"\
+"lds    r26, %[tsp]       \n"\
+"lds    r27, %[tsp]+1     \n"\
+"ld     r0, X+            \n"\
+"out    __SP_L__, r0      \n"\
+"ld     r0, X+            \n"\
+"out    __SP_H__, r0      \n"\
 "pop    r29               \n"\
 "pop    r28               \n"\
 "pop    r27               \n"\
@@ -250,63 +293,22 @@ asm volatile(                \
 "pop    r1                \n"\
 RESTORE_EIND                 \
 RESTORE_RAMPZ                \
+"pop    r31               \n"\
+"pop    r30               \n"\
 "pop    r0                \n"\
 "out    __SREG__, r0      \n"\
 "pop    r0                \n"\
-::)
+::[tsp] "m" (task))
 
 
 //Stack growing down for AVR
 #define OS_STACK_GROWN_DOWN TRUE
 
 //Enter critical section, save status register and disable all interrupts
-#define OS_ENTER_CRITICAL() uint8_t sreg=SREG; cli()
 //Restore the Status register
+#define OS_ENTER_CRITICAL() uint8_t sreg=SREG; cli()
 #define OS_EXIT_CRITICAL()  SREG=sreg
 
-//Restore Stack pointer for OS
-//#define USE_OPTIMIZED_STACK_OPS
-
-#ifdef USE_OPTIMIZED_STACK_OPS
-
-#define OS_RESTORE_STACK_PTR(sp)   SP=sp
-#define TASK_RESTORE_STACK_PTR(t)  SP=t->sp
-#define TASK_SAVE_STACK_PTR(t)     t->sp=SP
-
-#else
-#define OS_RESTORE_STACK_PTR(sp)    \
-asm volatile(                       \
-"out __SP_L__, %A0      \n"         \
-"out __SP_H__, %B0      \n"         \
-::"z" (sp))
-
-//Restore stack pointer for task
-#define TASK_RESTORE_STACK_PTR(sp)  \
-asm volatile(                       \
-"lds r30, %[_sp]    \n"             \
-"lds r31, %[_sp]+1  \n"             \
-"ld  r0 , z+        \n"             \
-"out __SP_L__, r0   \n"             \
-"ld  r0 , z+        \n"             \
-"out __SP_H__, r0   \n"             \
-:                                   \
-:[_sp] "m" (sp)                     \
-:"r0","r30","r31")
-
-//Save stack pointer for task
-#define TASK_SAVE_STACK_PTR(sp)     \
-asm volatile(                       \
-"lds r30, %[_sp]    \n"             \
-"lds r31, %[_sp]+1  \n"             \
-"in  r0 , __SP_L__  \n"             \
-"st  z+ , r0        \n"             \
-"in  r0 , __SP_H__  \n"             \
-"st  z+ , r0        \n"             \
-:                                   \
-:[_sp] "m" (sp)                     \
-:"r0","r30","r31")
-
-#endif
 
 //Jump to a function indirectly
 #define OS_INDIRECT_JUMP(fn)    asm volatile ("ijmp" :: "z" (fn))
@@ -328,14 +330,13 @@ defined(__AVR_ATmega128A__)
 
 //Setup SysTick timer
 void __os_systick_init(){
-    TCCR0 = _BV(WGM01);                                //top = OCR0
-    TCCR0 |= _BV(COM01);                               //clear OC0 on compare match
-    #if defined(OS_MS_PER_TICK)
+    TCCR0 = _BV(WGM01);                                //top = OCR0, Clear OCR0 o n compare match
+    //TCCR0 |= _BV(COM1);                              //toggle OC0 pin
     TCCR0 |= _BV(CS02);                                // 1/64 prescale
+    #if defined(OS_MS_PER_TICK)
     OCR0  = (F_CPU/64)/(1000L/OS_MS_PER_TICK);
     #else
-    TCCR0 |= _BV(CS01)|_BV(CS00);                      // 1/32 prescale
-    OCR0  = (F_CPU/32)/(1000000L/OS_US_PER_TICK);
+    OCR0  = (F_CPU/64)/(1000000L/OS_US_PER_TICK);
     #endif
     TIMSK |= _BV(OCIE0);                               //enable interrupt
 }
