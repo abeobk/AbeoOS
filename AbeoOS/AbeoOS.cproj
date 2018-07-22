@@ -216,6 +216,9 @@
     <Compile Include="arch\avr\config.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="arch\avr\port.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="main.c">
       <SubType>compile</SubType>
     </Compile>

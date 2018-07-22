@@ -5,25 +5,35 @@
 * Author : Do Van Phu
 */
 
-#include <avr/io.h>
 #include "abeoos/os.h"
+#define __DELAY_BACKWARD_COMPATIBLE__ 
+#include <util/delay.h>
 
 uint32_t ms=10;
 uint8_t bit=1;
+double pwm=0;
 
 DEFINE_MUTEX(m1);
-
-
-//Setup SysTick ISR
-//OS_SETUP_SYSTICK_ISR();
 
 //__OS_TASK__
 void task0(void* data){
     while(1){
-        PORTA ^= _BV(0);
+        PORTA |= _BV(0);
+        os_task_sleep_ms(1);
+        _delay_us(pwm);
+        PORTA &= ~_BV(0);
+        os_task_sleep_ms(15);
+    }
+}
+
+void task00(void* data){
+    while(1){
+        pwm+=1;
+        if(pwm==1000)pwm=0;
         os_task_sleep_ms(1);
     }
 }
+
 
 //__OS_TASK__
 void task1(void* data){
@@ -79,6 +89,7 @@ int main(void)
     sysuart_init();
 
     os_create_task(task0,71,TASK_PRI_REALTIME,NULL);
+    os_create_task(task00,71,TASK_PRI_REALTIME,NULL);
     os_create_task(task1,71,TASK_PRI_HIGH,0);
     os_create_task(task2,71,TASK_PRI_NORMAL,0);
 

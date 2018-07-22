@@ -9,7 +9,7 @@
 #ifndef ARCH_H_
 #define ARCH_H_
 
-#include "avr/config.h"
+#include "avr/port.h"
 
 
 #endif /* ARCH_H_ */
